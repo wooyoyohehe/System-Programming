@@ -1,3 +1,5 @@
+// This code is my own work, it was written without 
+// consulting a tutor or code written by other students-Shuang Wu
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +9,9 @@
 
 #define magic_number 2021551
 FreeListNode first_node = NULL;
+void* heap_cur_end = NULL;
+void* heap_start = NULL;
+int my_malloc_flag = 0;
 //FreeListNode second_node  = NULL;
 //FreeListNode third_node  = NULL;
 
@@ -20,9 +25,6 @@ void set_header(unsigned int size,void* ptr)
     *((unsigned int*)((char*)ptr + 4)) = magic_number;
     *((unsigned int*)((char*)ptr + 0)) = size;
 }
-
-
-
 void remove_node(FreeListNode ptr)
 {
     // ptr IS THE FIRST ONE OR THE ONLY ONE
@@ -57,19 +59,14 @@ void coalesce_free_list(void)
     {
         while (temp_ptr->flink != NULL)
         {
-            if (temp_ptr->size + temp_ptr != temp_ptr->flink)
+            if ((void *)temp_ptr + temp_ptr->size == temp_ptr->flink)
             {
-                temp_ptr = temp_ptr->flink;
-                continue;
+                temp_ptr->size = temp_ptr->flink->size + temp_ptr->size;
+                temp_ptr->flink = temp_ptr->flink->flink;
             }
             else
             {
-                void* ptr1 = temp_ptr;
-                void* ptr1_next = temp_ptr->flink->flink;
-                unsigned int new_size = temp_ptr->size + temp_ptr->flink->size;
-                FreeListNode new_node = ptr1;
-                new_node->size = new_size;
-                new_node->flink = ptr1_next;
+                temp_ptr = temp_ptr->flink;
             }
         }
         return;
@@ -104,61 +101,63 @@ void* split(unsigned int rest_part_size, void* start_of_rest)
     return rest_part;
 }
 
-void insert_node(FreeListNode rest_part)
+void insert_node(FreeListNode inserted_node)
 {
 
     FreeListNode head = free_list_begin();
-    FreeListNode inserted_node;
 
-
-
-    if (head == NULL)
+    if (free_list_begin() == NULL)
     {
-        first_node = rest_part;
+        first_node = inserted_node;
+        free_list_begin()->flink = NULL;
         return;
     }
 
     else
     {
-        if (head->flink == NULL)
+        if (free_list_begin()->flink == NULL)
         {
-            if (head < rest_part)
+            if (head < inserted_node)
             {
-                rest_part = head->flink;
+                free_list_begin()->flink = inserted_node;
+
+                inserted_node->flink = NULL;
+
                 return;
             }
             else
             {
-                rest_part->flink = head;
-                first_node = rest_part;
+                inserted_node->flink = head;
+                first_node = inserted_node;
+
+                inserted_node->flink->flink = NULL;
                 return;
             }
         }
-
-        if (rest_part < first_node)
+        if (inserted_node < first_node)
         {
-            rest_part->flink = head;
-            first_node = rest_part;
+            inserted_node->flink = head;
+            first_node = inserted_node;
             return;
         }
 
         while (head->flink != NULL)
         {
-            if (head->flink < rest_part)
+            if (head->flink < inserted_node)
             {
                 head = head->flink;
                 continue;
             }
-            if (head->flink > rest_part)
+            if (head->flink > inserted_node)
             {
-                rest_part->flink = head->flink;
-                head->flink = rest_part;
+                inserted_node->flink = head->flink;
+                head->flink = inserted_node;
                 return;
             }
         }
         if (head->flink == NULL)
         {
-            head->flink = rest_part;
+            head->flink = inserted_node;
             return;
         }
     }
@@ -166,17 +165,30 @@ void insert_node(FreeListNode rest_part)
 
 void my_free(void* ptr)
 {
-    if (ptr == NULL || *((int*)(ptr+4)) != 2021551)
+    if(ptr > sbrk(0) || ptr - 8 <heap_start || ptr == NULL)
     {
         my_errno = MYBADFREEPTR;
         return;
     }
 
-    FreeListNode free_node_inserted = ptr;
-    //printf("%u\n",*((int*)(ptr+0)));
-    free_node_inserted -> size = *((int*)(ptr+0));
+    ptr = ptr-8;
+    int magic;
+    memcpy(&magic,(int*)(ptr+4),4);
+    int node_size;
+    memcpy(&node_size,(int*)(ptr+0),4);
+
+    if (ptr == NULL || magic != 2021551)
+    {
+        my_errno = MYBADFREEPTR;
+        return;
+    }
+    FreeListNode free_node_inserted;
+    free_node_inserted = (FreeListNode)ptr;
+    free_node_inserted -> size = node_size;
+
     free_node_inserted->flink = NULL;
     insert_node(free_node_inserted);
+
 }
 
 FreeListNode free_list_begin(void)
@@ -186,41 +198,61 @@ FreeListNode free_list_begin(void)
 
 //my_malloc: returns a pointer to a chunk of heap allocated memory
 void* my_malloc(size_t size) {
+    if(heap_start == NULL) {
+        heap_start = sbrk(0);
+//        printf("sbrk(0) in my malloc: %p\n", heap_start);
+    }
 
     unsigned int size_needed = get_size_needed(size + CHUNKHEADERSIZE);
-
     // IF FREE_LIST IS EMPTY
+//    printf("%d\n",size_needed);
     if (free_list_begin() == NULL) {
         if (size_needed > 8192) {
-            if (sbrk(size_needed) == NULL) {
+            if (!sbrk(size_needed)) {
                 my_errno = MYENOMEM;
                 return NULL;
             }
-
-            FreeListNode ptr = sbrk(size_needed);
-
+            void * ptr = sbrk(size_needed);
             set_header(size_needed, ptr);
 
+            FreeListNode node;
+            node = (FreeListNode)ptr;
+            return node;
 
-            return ptr + 8;
         } else {
             void *chunk_ptr = sbrk(8192);
+            if(chunk_ptr == NULL)
+            {
+                my_errno = MYENOMEM;
+                return NULL;
+            }
 
             // IF 8192 CHUNK NEED TO BE SPLIT
             if (8192 - size_needed > 16) {
                 void *start_of_rest = chunk_ptr + size_needed;
                 unsigned int rest_part_size = 8192 - size_needed;
 
-                //printf("split here!\n");
-
-                FreeListNode rest_part = split(rest_part_size, start_of_rest);
-                //printf("insert here!\n");
-                insert_node(rest_part);
+                FreeListNode used_node;
+                used_node = (FreeListNode)chunk_ptr;
+                used_node->size = size_needed;
+                used_node->flink = NULL;
                 set_header(size_needed, chunk_ptr);
-                return chunk_ptr;
+
+                FreeListNode rest_node;
+                rest_node = (FreeListNode)start_of_rest;
+                rest_node->size = rest_part_size;
+                rest_node->flink = NULL;
+
+                set_header(rest_part_size, start_of_rest);
+
+                insert_node(rest_node);
+
+//                printf("sbrk(0) in my malloc: %p\n", sbrk(0));
+
+                return chunk_ptr+8;
             } else {
                 set_header(size_needed, chunk_ptr);
-                return chunk_ptr;
+                return chunk_ptr+8;
             }
         }
     }
@@ -228,60 +260,97 @@ void* my_malloc(size_t size) {
     else {
         // if there is only one node in the list
         FreeListNode ptr = free_list_begin();
-        if (ptr->flink == NULL && ptr->size >= size_needed) {
-            void *start_of_rest = ptr + size_needed;
-            unsigned int rest_part_size = ptr->size;
-            FreeListNode rest_part = split(rest_part_size, start_of_rest);
-            (ptr + size_needed)->flink = NULL;
-            return ptr;
-        }
 
+        if (ptr->flink == NULL && ptr->size == size_needed) {
+            void* temp_ptr = ptr;
+            first_node = NULL;
+            return temp_ptr+8;
+        }
+        if (ptr->flink == NULL && ptr->size >= size_needed) {
+            void *temp_ptr = ptr;
+            void *start_of_rest = temp_ptr+size_needed;
+
+            unsigned int rest_part_size = ptr->size-size_needed;
+            ptr->size = size_needed;
+
+            ptr->flink = NULL;
+
+            FreeListNode rest_part;
+            FreeListNode used_node;
+
+            rest_part = (FreeListNode)start_of_rest;
+            rest_part->size = rest_part_size;
+            rest_part->flink = NULL;
+
+            first_node = rest_part;
+            first_node->flink = NULL;
+
+            void* p = ptr;
+
+            set_header(size_needed, p);
+
+            return p+8;
+        }
         if (ptr->flink == NULL && ptr->size < size_needed) {
             void *chunk_ptr = sbrk(8192);
+            if(chunk_ptr == NULL)
+            {
+                my_errno = MYENOMEM;
+                return NULL;
+            }
             set_header(size_needed, chunk_ptr);
             // IF 8192 CHUNK NEED TO BE SPLIT
             if (8192 - size_needed > 16) {
                 void *start_of_rest = chunk_ptr + size_needed;
                 unsigned int rest_part_size = 8192 - size_needed;
-
                 //printf("split here!\n");
 
                 FreeListNode rest_part = split(rest_part_size, start_of_rest);
                 //printf("insert here!\n");
                 insert_node(rest_part);
 
-                return chunk_ptr;
+                return chunk_ptr+8;
 
             }
         }
-
-        if (ptr->size >= size_needed)
+        if (free_list_begin()->size >= size_needed)
         {
             if (ptr->size - size_needed <= 16)
             {
-                first_node = ptr->flink;
-                void* node = ptr;
-                size_needed = ptr->size;
-                set_header(size_needed, node);
-                return node;
+                FreeListNode used_node;
+                used_node = free_list_begin();
+                FreeListNode rest_node;
+                rest_node = used_node->flink;
+
+                used_node->flink = NULL;
+                first_node = rest_node;
+
+                void* temp_ptr= used_node;
+                set_header(ptr->size, temp_ptr);
+
+                return temp_ptr+8;
             }
             else
             {
                 void* start = ptr;
-                void* next_part = ptr->flink;
+                FreeListNode next_part = ptr->flink;
                 unsigned int rest_part_size = ptr->size-size_needed;
                 void* rest_begin = start+size_needed;
                 FreeListNode rest_part = rest_begin;
+
                 rest_part->flink = next_part;
                 rest_part->size = rest_part_size;
+
+//                set_header(rest_part_size, rest_begin);
+
                 first_node = rest_part;
-                set_header(size_needed, rest_begin);
-                return start;
+
+                set_header(size_needed, start);
+
+
+                return start+8;
             }
         }
-
-
-
 
         while (ptr->flink != NULL)
         {
@@ -291,14 +360,14 @@ void* my_malloc(size_t size) {
             }
             if (ptr->flink->size >= size_needed)
             {
-                if (ptr->size - size_needed <= 16)
+                if (ptr->flink->size - size_needed <= 16)
                 {
                     void* start = ptr->flink;
                     void* next_part = ptr->flink->flink;
                     size_needed = ptr->flink->size;
                     ptr->flink = next_part;
                     set_header(size_needed, start);
-                    return start;
+                    return start+8;
                 }
                 else
                 {
@@ -311,7 +380,7 @@ void* my_malloc(size_t size) {
                     rest_part->size = rest_part_size;
                     ptr->flink = rest_part;
                     set_header(size_needed, start);
-                    return start;
+                    return start+8;
                 }
             }
         }
@@ -319,14 +388,15 @@ void* my_malloc(size_t size) {
         {
             if (size_needed > 8192)
             {
-                if (sbrk(size_needed) == NULL)
+                void* temp_ptr = sbrk(size_needed);
+                if(temp_ptr == NULL)
                 {
                     my_errno = MYENOMEM;
                     return NULL;
                 }
-                void* last_node = sbrk(size_needed);
-                set_header(size_needed, last_node);
-                return last_node;
+                set_header(size_needed, temp_ptr);
+
+                return temp_ptr+8;
             }
         }
     }
@@ -334,7 +404,7 @@ void* my_malloc(size_t size) {
 //
 //
 //void print_free_list(FreeListNode fhead){
-////    printf("55555555\n");
+//
 //    printf("freelist: ");
 //
 //    if (NULL == fhead){
@@ -345,15 +415,15 @@ void* my_malloc(size_t size) {
 //    {
 //        FreeListNode fnode = fhead;
 //        while (fnode) {
-//            printf("%lu ", fnode->size);
+//            printf("%u ", fnode->size);
 //            fnode = fnode->flink;
 //        }
 //        printf("\n");
 //    }
 //}
-//
-//
-//
+////
+////
+////
 //int main(int argc, char* agrv[]){
 //
 //
