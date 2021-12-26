@@ -1,0 +1,435 @@
+#! /bin/bash
+
+function myecho () {
+    echo -e "\e[93m"$1"\e[39m"
+}
+
+function interrupt() {
+    myecho "Interruption while waiting for $1"
+    export INT="Y"
+    kill -TERM $1
+}
+
+function get_eval() {
+    # Parameters: $1=FAIL, $2=PARTIAL, $3=MSG_OK, $4=MSG_FAIL, $5=GRDFILE
+    BREAK=""
+    GRDFILE=$5
+    while [[ -z ${BREAK} ]]; do
+        BREAK="1"
+        myecho "    Test ${TSTTYPE} correct? (Y / N / P [partial] / M [do a manual check later])"
+        read -u 3  KEY
+        KEY=$(echo ${KEY} | tr a-z A-Z)
+        if [[ "$KEY" == "N" ]]; then
+            PRED=$1
+            echo "(-${PRED} Points) $4" >> ${GRDFILE}
+            GRADE=$(( ${GRADE} + ${PRED} ))
+        elif [[ "$KEY" == "P" ]]; then
+            PRED=$2
+            echo "(-${PRED} Points) Partial: $4" >> ${GRDFILE}
+            GRADE=$(( ${GRADE} + ${PRED} ))
+        elif [[ "$KEY" == "Y" ]]; then
+            echo "$3" >> ${GRDFILE}
+        elif [[ "$KEY" == "M" ]]; then
+            echo "--- Perform a manual check for the test '${TSTTYPE}' " >> ${GRDFILE}
+        else
+            echo "Invalid option '$KEY'. Select again..."
+            BREAK=""
+        fi
+    done
+}
+
+
+HW="lab2"
+HWDIR="${HW}"
+BINFILE="myar"
+HWFILE="${BINFILE}.c"
+GRDFILE="${HW}.grade"
+# HWOUT="${HOME}/cs551/${HWDIR}"
+# NETIDS="${HOME}/cs551/netids"
+# DEVELOPMENT ENVIRONMENT !!!! COMMENT LATER
+#HWOUT="${HOME}/cs551/${HWDIR}"
+#NETIDS="${HOME}/cs551/lab2/regrade"
+
+HWOUT=/home/cs551001/share/labs/lab2/check
+
+
+# Whether using the dash or not on options: comment to disable the dash (default).
+DASH="-"
+
+# ATTENTION: when creating 'ar' archives, use modifiers 'fU' to truncate names and to ...
+#            ... add user/group and timestamp. See below:
+# >   ar qfU arc_t1 file_even.txt
+
+
+{	
+GRADE=0
+	# Clearing the grade file.
+	echo "" > ${GRDFILE} 
+	echo "Student test, graded on $(date)" >> ${GRDFILE}
+	echo "------------------------------------------" >> ${GRDFILE}
+
+	# Starting grading process by compiling the source file.
+	myecho "   #################### Compiling source files for \"$NAME\" (NETID: test)"
+if test -f Makefile
+	then
+	       	make clean
+		rm ${BINFILE}
+		rm *.o
+		make ${BINFILE}
+	else	
+	 gcc ${HWFILE} -Wall -o ${BINFILE} -l m 2>compErr.log 1>compOut.log
+ fi
+	ERR=$?
+	if (( $ERR != 0 )); then
+		myecho "Compilation failed for \"$NAME\" (NETID: $NID). Inspect code manually to provide a grade!"
+		echo "Compilation failed for \"$NAME\" (NETID: $NID). 0 Point." >> ${GRDFILE}
+        cd - > /dev/null
+		continue
+	else
+		echo "Compilation completed correctly. Warnings provided in 'compErr.log' for your information." >> ${GRDFILE}
+	fi
+	echo ""
+
+    # Comment for regular execution. Uncomment to run a single test per student.
+#    DBG="x"
+
+    # ##########################################################################################
+    TSTTYPE="q1"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        cp "${HWOUT}/zz_files/file_even.txt" .
+        rm -f "arc_${TSTTYPE}"
+        ./${BINFILE} ${DASH}q "arc_${TSTTYPE}" "file_even.txt" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        myecho "    ########## Showing the result of 'ar tv' on archive created with 'myar q'. Should show 'file_even.txt' ..." >>"run_${TSTTYPE}.log"
+        ar tv "arc_${TSTTYPE}" 2>&1 1>>"run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        P1="4"
+        P2="2"
+        P3="${TSTTYPE}: Creates valid myar archive, compatible with ar"
+        P4="${TSTTYPE}: Does not create valid myar archive, compatible with ar"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="q2"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        cp "${HWOUT}/zz_files/file_even.txt" .
+        cp "${HWOUT}/zz_files/file_odd.txt" .
+        rm -f "arc_${TSTTYPE}"
+        ./${BINFILE} ${DASH}q "arc_${TSTTYPE}" "file_even.txt" "file_odd.txt" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        myecho "    ########## Showing the result of 'ar tv' on archive created with 'myar q'. Should show 'file_even.txt' and 'file_odd.txt' ..." >>"run_${TSTTYPE}.log"
+        ar tv "arc_${TSTTYPE}" 2>&1 1>>"run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        P1="2"
+        P2="1"
+        P3="${TSTTYPE}: Creates valid myar archive with odd file sizes, compatible with ar"
+        P4="${TSTTYPE}: Does not create valid myar archive with odd file sizes, compatible with ar"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="t1"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}: your 'myar' listing archive created by 'ar'"
+        myecho "         ##### Should show 'file_even.txt' 'file_odd.txt'"
+        INT="none"
+        cp "${HWOUT}/zz_files/arc_${TSTTYPE}" . > /dev/null
+        ./${BINFILE} ${DASH}t "arc_${TSTTYPE}" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        cat "run_${TSTTYPE}.log"
+        P1="1"
+        P2="0"
+        P3="${TSTTYPE}: Properly listing archive created by ar"
+        P4="${TSTTYPE}: Failed on listing archive created by ar"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="t2"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Creating archive for test '${TSTTYPE}' for ${NID}: your 'myar' listing archive created by your 'myar'"
+        rm -f "arc_${TSTTYPE}"
+        cp "${HWOUT}/zz_files/file_even.txt" .
+        ./${BINFILE} ${DASH}q "arc_${TSTTYPE}" "file_even.txt"
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        myecho "         ##### Should show 'file_even.txt'"
+        INT="none"
+        ./${BINFILE} ${DASH}t "arc_${TSTTYPE}" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        cat "run_${TSTTYPE}.log"
+        P1="1"
+        P2="0"
+        P3="${TSTTYPE}: Properly listing archive created by your myar"
+        P4="${TSTTYPE}: Failed on listing archive created by your myar"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="tv1"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}: your 'myar' listing archive created by 'ar'"
+        myecho "         ##### Should show 'file_even.txt', 'file_ev_01', 'file_ev_02', 'file_ev_03', 'file_ev_04'"
+        INT="none"
+        cp "${HWOUT}/zz_files/arc_${TSTTYPE}" . > /dev/null
+        ./${BINFILE} ${DASH}t ${DASH}v "arc_${TSTTYPE}" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        cat "run_${TSTTYPE}.log"
+        P1="2"
+        P2="1"
+        P3="${TSTTYPE}: Properly listing archive created by ar, with tv"
+        P4="${TSTTYPE}: Failed on listing archive created by ar, with tv"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="tv2"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Creating archive for test '${TSTTYPE}' for ${NID}: your 'myar' listing archive created by your 'myar'"
+        myecho "         ##### Should show 'file_even.txt', 'file_ev_01', 'file_ev_02', 'file_ev_03', 'file_ev_04'"
+        rm -f "arc_${TSTTYPE}"
+        cp "${HWOUT}/zz_files/file_ev"* .
+        ./${BINFILE} ${DASH}q "arc_${TSTTYPE}" "file_even.txt"
+        ./${BINFILE} ${DASH}q "arc_${TSTTYPE}" "file_ev_01"
+        ./${BINFILE} ${DASH}q "arc_${TSTTYPE}" "file_ev_02"
+        ./${BINFILE} ${DASH}q "arc_${TSTTYPE}" "file_ev_03"
+        ./${BINFILE} ${DASH}q "arc_${TSTTYPE}" "file_ev_04"
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        ./${BINFILE} ${DASH}t ${DASH}v "arc_${TSTTYPE}" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        cat "run_${TSTTYPE}.log"
+        P1="2"
+        P2="1"
+        P3="${TSTTYPE}: Properly listing archive created by your myar, with tv"
+        P4="${TSTTYPE}: Failed on listing archive created by your myar, with tv"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="d1"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Creating archive for test '${TSTTYPE}' for ${NID}"
+        cp "${HWOUT}/zz_files/file_ev"* .
+        rm -f "arc_${TSTTYPE}"
+        ar qfU "arc_${TSTTYPE}" "file_ev_01" "file_ev_02" "file_ev_03" "file_ev_04"
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        ./${BINFILE} ${DASH}d "arc_${TSTTYPE}" "file_ev_03" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        myecho "    Archive listing should have 3 files and NOT CONTAIN 'file_ev_03'!" >> "run_${TSTTYPE}.log"
+        ar tv "arc_${TSTTYPE}"  >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        P1="4"
+        P2="2"
+        P3="${TSTTYPE}: Properly deleting a unique file in archive, verified with ar tv"
+        P4="${TSTTYPE}: Failed on deleting a unique file in archive, verified with ar tv"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # # ##########################################################################################
+    # TSTTYPE="d3"
+    # if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+    #     echo ""
+    #     myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+    #     myecho "        ###### Showing occurrences of 'unlink' in the source code ..."
+    #     INT="none"
+    #     grep -A 5 -B 5 -e "unlink" ${HWFILE} | more
+    #     P1="2"
+    #     P2="1"
+    #     P3="${TSTTYPE}: Properly removing multiple files without reopening archive (use of unlink)"
+    #     P4="${TSTTYPE}: Failed on the removal of multiple files without reopening archive (use of unlink)"
+    #     P5="${GRDFILE}"
+    #     get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    # fi
+
+    # ##########################################################################################
+    TSTTYPE="x"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Creating archive for test '${TSTTYPE}' for ${NID}"
+        cp "${HWOUT}/zz_files/file_ev"* .
+        touch -d "10 hours ago" "file_ev_03"
+        rm -f "arc_${TSTTYPE}"
+        ar qfU "arc_${TSTTYPE}" "file_ev_01" "file_ev_02" "file_ev_03" "file_ev_04"
+        mv "file_ev_03" "file_ev_03_ori"
+        touch -d "10 hours ago" "file_ev_03"
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        ./${BINFILE} ${DASH}x "arc_${TSTTYPE}" "file_ev_03" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        myecho "    Listing below should have 2 files: 'file_ev_03', 'file_ev_03_ori', differing by mtime at most!" >> "run_${TSTTYPE}.log"
+        ls -l file_ev_03* >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        P1="4"
+        P2="2"
+        P3="${TSTTYPE}: Properly extracting files with correct permissions and user/group"
+        P4="${TSTTYPE}: Failed to extract files with correct permissions and user/group"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="xo"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Creating archive for test '${TSTTYPE}' for ${NID}"
+        cp "${HWOUT}/zz_files/file_ev"* .
+        touch -d "10 hours ago" "file_ev_03"
+        rm -f "arc_${TSTTYPE}"
+        ar qfU "arc_${TSTTYPE}" "file_ev_01" "file_ev_02" "file_ev_03" "file_ev_04"
+        mv "file_ev_03" "file_ev_03_ori"
+        touch -d "10 hours ago" "file_ev_03_ori"
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        ./${BINFILE} ${DASH}x ${DASH}o "arc_${TSTTYPE}" "file_ev_03" 2>&1 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        myecho "    Listing below should have 2 files: 'file_ev_03', 'file_ev_03_ori', 'mtime' should match!" >> "run_${TSTTYPE}.log"
+        ls -l file_ev_03* >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        P1="2"
+        P2="1"
+        P3="${TSTTYPE}: Properly extracting files with correct permissions, user/group, mtime"
+        P4="${TSTTYPE}: Failed to extract files with correct permissions, user/group, mtime"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="A1"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Creating directory for test '${TSTTYPE}' for ${NID}"
+	workspace=A1
+	rm -rf $workspace 
+	mkdir -p $workspace
+	# cp myar $workspace
+	cd $workspace
+	touch today.txt
+	touch -t 201301291810 myfile.txt
+	#touch /tmp/test
+	#ln -s /tmp/test link
+	#touch -h -m -t 201301291810 link
+	mkdir dir
+
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+	../myar ${DASH}A 1 A1.ar
+	ar -t A1.ar
+	cd ..
+        TP=$!
+        myecho "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        myecho "    Listing below should have 2 files: 'myfile.txt!" >> "run_${TSTTYPE}.log"
+        P1="6"
+        P2="1"
+        P3="${TSTTYPE}: Properly implemented "
+        P4="${TSTTYPE}: not working or wrongly add symbolic link or directory or mtime > N files"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi    
+
+    # ##########################################################################################
+    TSTTYPE="IO"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        myecho "        ###### Showing occurrences of 'read','write', 'lseek' in the source code. If not unbuffered I/O, fail!"
+        INT="none"
+#        grep -A 1 -B 1 -e "read" -e "write" -e "seek" ${HWFILE} | more
+        grep -A 1 -B 1 -e "read" -e "write" -e "seek" *.c | more
+        P1="10"
+        P2="5"
+        P3="${TSTTYPE}: Properly using read/write/lseek for all diskio (unbuffered I/O)"
+        P4="${TSTTYPE}: Does not use read/write/lseek for all diskio (unbuffered I/O)"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="functions"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        myecho "    ########## Testing '${TSTTYPE}' for ${NID}"
+        myecho "        ###### Showing occurrences of 'read','write', 'lseek' in the source code. If not unbuffered I/O, fail!"
+        INT="none"
+        grep -A 1 -B 1 -e "fill_ar_hdr" -e "fill_meta" ${HWFILE} | more
+        P1="10"
+        P2="5"
+        P3="${TSTTYPE}: Properly implemented and used the functions ‘fill_ar_hdr’ and ‘fill_meta’"
+        P4="${TSTTYPE}: Does not implement and/or use the functions ‘fill_ar_hdr’ and ‘fill_meta’"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+#    continue
+
+
+	# Writing final grade
+	FGRADE=$(( 100 - ${GRADE} ))
+	echo "------------------------------------------" >> ${GRDFILE}
+	if test ${FGRADE} -lt 80
+	then
+		echo "Too Many Deductions: Minimal Grade Used"
+		echo "Too Many Deductions: Minimal Grade Used" >> ${GRDFILE}
+		FGRADE=50
+	fi
+	echo "Final grade = ${FGRADE}" >> ${GRDFILE}
+
+} 3<&0

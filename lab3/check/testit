@@ -1,0 +1,416 @@
+#! /bin/bash
+function myecho () {
+    echo -e "\e[93m"$1"\e[39m"
+}
+
+function interrupt() {
+    myecho "Interruption while waiting for $1"
+    export INT="Y"
+    kill -TERM $1
+}
+
+
+function get_eval() {
+    # Parameters: $1=FAIL, $2=PARTIAL, $3=MSG_OK, $4=MSG_FAIL, $5=GRDFILE
+    BREAK=""
+    GRDFILE=$5
+    while [[ -z ${BREAK} ]]; do
+        BREAK="1"
+        echo "    Test ${TSTTYPE} correct? (Y / N / P [partial] / M [do a manual check later])"
+        read -u 3 KEY
+        KEY=$(echo ${KEY} | tr a-z A-Z)
+        if [[ "$KEY" == "N" ]]; then
+            PRED=$1
+            echo "(-${PRED} Points) $4" >> ${GRDFILE}
+            GRADE=$(( ${GRADE} + ${PRED} ))
+        elif [[ "$KEY" == "P" ]]; then
+            PRED=$2
+            echo "(-${PRED} Points) Partial: $4" >> ${GRDFILE}
+            GRADE=$(( ${GRADE} + ${PRED} ))
+        elif [[ "$KEY" == "Y" ]]; then
+            # If no Ok message passed in, do not write to file.
+            if [[ ! -z $3 ]]; then
+                echo "$3" >> ${GRDFILE}
+            fi
+        elif [[ "$KEY" == "M" ]]; then
+            echo "--- Perform a manual check for the test '${TSTTYPE}' " >> ${GRDFILE}
+        else
+            echo "Invalid option '$KEY'. Select again..."
+            BREAK=""
+        fi
+    done
+}
+
+
+function get_eval_extra() {
+    # Parameters: $1=FAIL, $2=PARTIAL, $3=MSG_OK, $4=MSG_FAIL, $5=GRDFILE
+    BREAK=""
+    GRDFILE=$5
+    while [[ -z ${BREAK} ]]; do
+        BREAK="1"
+        echo "    Test ${TSTTYPE} correct? (Y / N / P [partial] / M [do a manual check later])"
+        read -u 3 KEY
+        KEY=$(echo ${KEY} | tr a-z A-Z)
+        if [[ "$KEY" == "Y" ]]; then
+            PRED=$1
+            echo "(+${PRED} Extra Points): $3" >> ${GRDFILE}
+            EXTRA=$(( ${EXTRA} + ${PRED} ))
+        elif [[ "$KEY" == "P" ]]; then
+            PRED=$2
+            echo "(+${PRED} Extra Points) Partial: $3" >> ${GRDFILE}
+            EXTRA=$(( ${EXTRA} + ${PRED} ))
+        elif [[ "$KEY" == "N" ]]; then
+            echo "$4" >> ${GRDFILE}
+        elif [[ "$KEY" == "M" ]]; then
+            echo "--- Perform a manual check for the test '${TSTTYPE}' " >> ${GRDFILE}
+        else
+            echo "Invalid option '$KEY'. Select again..."
+            BREAK=""
+        fi
+    done
+}
+
+function finalGrade () {
+    GRADE=$1
+    GRDFILE=$2
+    # Writing final grade
+    FGRADE=$(( 100 - ${GRADE} ))
+    echo "------------------------------------------" >> ${GRDFILE}
+    echo "Final grade = ${FGRADE}" >> ${GRDFILE}
+    return
+}
+
+# Defining this variable to be able to obtain the result from get_eval()
+KEY=""
+
+HW="lab3"
+HWDIR="${HW}"
+BINFILE="pipesort"
+HWFILE="${BINFILE}.c"
+COURSE="cs551"
+HWOUT="stu_codes"
+RESULTS="grading_results"
+GRDFILE=${RESULTS}
+BASE=/home/cs551001/share/labs/lab3/check
+
+
+# Whether using the dash or not on options: comment to disable the dash (default).
+#DASH="-"
+
+{
+GRADE=0
+    # Clearing the grade file.
+	echo "" > ${GRDFILE} 
+	echo "Student ${NID} graded on $(date)" >> ${GRDFILE}
+	echo "------------------------------------------" >> ${GRDFILE}
+
+# Starting grading process by compiling the source file.
+        myecho "   #################### Compiling source files for \"$NAME\" (NETID: $NID)"
+if test -f Makefile
+        then
+                make clean
+                rm ${BINFILE}
+                rm *.o
+                make ${BINFILE}
+        else
+         gcc ${HWFILE} -Wall -o ${BINFILE} -l m 2>compErr.log 1>compOut.log
+ fi
+        ERR=$?
+        if (( $ERR != 0 )); then
+                myecho "Compilation failed for \"$NAME\" (NETID: $NID). Inspect code manually to provide a grade!"
+                echo "Compilation failed for \"$NAME\" (NETID: $NID). 0 Point." >> ${GRDFILE}
+        cd - > /dev/null
+                continue
+        else
+                echo "Compilation completed correctly. Warnings provided in 'compErr.log' for your information." >> ${GRDFILE}
+        fi
+        echo ""
+
+    # Comment for regular execution. Uncomment to run a single test per student.
+    # DBG="i1"
+
+    # ##########################################################################################
+    TSTTYPE="a"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        grep -B 1 -A 1 -e "sort" ${HWFILE} | grep -B 1 -A 1 -e "exec" > "run_${TSTTYPE}.log"
+        P1="2"
+        P2="1"
+        P3="${TSTTYPE}: Properly using '/bin/sort' for sorting"
+        P4="${TSTTYPE}: Does not use '/bin/sort' for sorting"
+        P5="${GRDFILE}"
+        echo "    ########## Test: '${P3}': should find use of 'exec' and 'sort'" >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+        rm "run_${TSTTYPE}.log"
+
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="b"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        grep -B 1 -A 1 -e "wait" ${HWFILE} > "run_${TSTTYPE}.log"
+        P1="5"
+        P2="3"
+        P3="${TSTTYPE}: The parent process waits for all its children"
+        P4="${TSTTYPE}: The parent process does not wait for all its children"
+        P5="${GRDFILE}"
+        echo "    ########## Test: '${P3}': should find use of 'wait' or 'waitpid' for all children" >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+        rm "run_${TSTTYPE}.log"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="c"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        grep -B 1 -A 1 -e "fgets" -e "fgetc" -e "fwrite" -e "fread" -e "fputs" -e "putc" -e "scanf" -e "read" e "write" ${HWFILE} > "run_${TSTTYPE}.log"
+        P1="5"
+        P2="3"
+        P3="${TSTTYPE}: Stream functions (buffered I/O) being used for I/O to/from pipes"
+        P4="${TSTTYPE}: Does not use stream functions (buffered I/O) for I/O to/from pipes"
+        P5="${GRDFILE}"
+        echo "    ########## Test: '${P3}': should find useges of stream functions to pipes" >> "run_${TSTTYPE}.log"
+        echo "    ##########      Examples of stream functions are: fgets, fgetc, fwrite, fread, fputs, putc, scanf" >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+        rm "run_${TSTTYPE}.log"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="d"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        grep -B 1 -A 1 -e "fclose" -e "fflush" ${HWFILE} > "run_${TSTTYPE}.log"
+        P1="3"
+        P2="1"
+        P3="${TSTTYPE}: Pipes are being closed by 'fclose or fflushed' when used for stream-based I/O"
+        P4="${TSTTYPE}: Does not close some pipes with 'fclose or fflushed' when used for stream-based I/O"
+        P5="${GRDFILE}"
+        echo "    ########## Test: '${P3}': should find use of 'fclose'" >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+        rm "run_${TSTTYPE}.log"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="e"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        grep -B 1 -A 1 -e "open" ${HWFILE} > "run_${TSTTYPE}.log"
+        P1="1"
+        P2="1"
+        P3="${TSTTYPE}: Don't open any disk file."
+        P4="${TSTTYPE}:  Don't open any disk file."
+        P5="${GRDFILE}"
+        echo "    ########## Test: '${P3}':  check use of 'open'." >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+        rm "run_${TSTTYPE}.log"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="f"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}"
+        INT="none"
+        grep -B 1 -A 1 -e "sort" ${HWFILE} | grep -B 1 -A 1 -e "exec" > "run_${TSTTYPE}.log"
+        P1="1"
+        P2="1"
+        P3="${TSTTYPE}: Exec sort with no arguments."
+        P4="${TSTTYPE}: Exec sort with no arguments."
+        P5="${GRDFILE}"
+        echo "    ########## Test: '${P3}':  check use of 'sort' anc 'exec'." >> "run_${TSTTYPE}.log"
+        cat "run_${TSTTYPE}.log"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+        rm "run_${TSTTYPE}.log"
+    fi
+
+    # Dynamic tests with a small file and 1 sort, -n 1 -s 5 -l 25 
+    # ##########################################################################################
+    TSTTYPE="g"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+    echo ""
+    echo "    ########## Testing '${TSTTYPE}' for ${NID}: at least 156 lines, no duplicates, sorted"
+    INT="none"
+    file="${HOME}/${COURSE}/${HWDIR}/files/small"
+    file="${BASE}/files/small"
+    ./${BINFILE} -n 1 -s 4 -l 10 < ${file} 1>"run_${TSTTYPE}.log" &
+    TP=$!
+    echo "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+    trap 'interrupt ${TP}' SIGINT
+    wait ${TP}
+    trap - SIGINT
+    # Checking the number of lines
+        LINES_COUNT=$(wc -l < "run_${TSTTYPE}.log")
+        if (( ${LINES_COUNT} > 310 )); then
+            ENOUGH_LINES="Lines count ok!"
+        else
+            ENOUGH_LINES="Not enough lines!! Should have at least 310, and HAS ${LINES_COUNT}!"
+        fi
+        echo "    ---> ${ENOUGH_LINES}"
+        # Cleans output by removing any non-alphanumeric (,; etc.), and formatting with "%10d %s".
+        # Also removes empty lines. Later removes the numbers.
+        cat "run_${TSTTYPE}.log" | awk '{a=$0; gsub(/[^0-9a-z]/, " ", a); split(a, b, " "); if (length(b)==2) {printf("%10d %s\n", b[1], b[2])}}' | awk '{print $2}' > "run_${TSTTYPE}_no_numbers.log"
+        cat "run_${TSTTYPE}_no_numbers.log" | sort | uniq > "run_${TSTTYPE}_uniqed.log"
+        cat "run_${TSTTYPE}_no_numbers.log" | sort > "run_${TSTTYPE}_sorted.log"
+        diff "run_${TSTTYPE}_sorted.log" "run_${TSTTYPE}_uniqed.log" > "run_${TSTTYPE}_duplicates.log"
+        diff "run_${TSTTYPE}_no_numbers.log" "run_${TSTTYPE}_sorted.log" > "run_${TSTTYPE}_unsorted.log"
+        echo "    Showing duplicate lines:"
+        cat "run_${TSTTYPE}_duplicates.log" | more
+        echo "    Showing unsorted lines:"
+        cat "run_${TSTTYPE}_unsorted.log" | more
+        P1="10"
+        P2="5"
+        P3="${TSTTYPE}: Output is free of duplicates and in order with 1 sorter and a small file"
+        P4="${TSTTYPE}: Output has duplicates or is out of order with 1 sorter and a small file"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+        rm "run_${TSTTYPE}.log"
+    fi
+
+
+    # ##########################################################################################
+    TSTTYPE="h"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}: no words <=4 or >10"
+        INT="none"
+        file="${HOME}/${COURSE}/${HWDIR}/files/small"
+    file="${BASE}/files/small"
+        ./${BINFILE} -n 1 -s 4 -l 10 < ${file} 1>"run_${TSTTYPE}.log" &
+        TP=$!
+        echo "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+        
+        echo "    Showing diff of ground truth result to student's result for 1 sorts and a small file: should be empty!"
+        #diff "run_${TSTTYPE}.log" "${HOME}/${COURSE}/${HWDIR}/files/small_out" > "run_${TSTTYPE}_diff.log"
+        diff "run_${TSTTYPE}.log" "${BASE}/files/small_out" > "run_${TSTTYPE}_diff.log"
+        cat "run_${TSTTYPE}_diff.log"
+        P1="3"
+        P2="2"
+        P3="${TSTTYPE}: Results are correct for 1 sorter and a small file"
+        P4="${TSTTYPE}: Results are NOT correct for 1 sorter and a small file"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    #dynamic test of ‘pipesort’ with a large test file and different settings
+    # ##########################################################################################
+    TSTTYPE="i1"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}: no words <=4 or >10"
+        INT="none"
+        file="${HOME}/${COURSE}/${HWDIR}/files/large"
+    file="${BASE}/files/large"
+        ./${BINFILE} -n 1 -s 4 -l 10 < ${file} 1>"run_${TSTTYPE}_1_sorts.log" &
+        TP=$!
+        echo "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+
+        # Cleans output by removing any non-alphanumeric (,; etc.), and formatting with "%10d %s".
+        # Also removes empty lines. Later removes the numbers.
+        #cat "run_${TSTTYPE}_1_sorts.log" | awk '{a=$0; gsub(/[^0-9a-z]/, " ", a); split(a, b, " "); if (length(b)==2) {printf("%10d%s\n", b[1], b[2])}}' | awk '{print $2}' > "run_${TSTTYPE}_1_sorts_fmt.log"
+        echo "    Showing diff of ground truth result to student's result for 1 sorts and a large file: should be empty!"
+        #diff "run_${TSTTYPE}_1_sorts.log" "${HOME}/${COURSE}/${HWDIR}/files/large_out" > "run_${TSTTYPE}_1_sorts_diff.log"
+        diff "run_${TSTTYPE}_1_sorts.log" "${BASE}/files/large_out" > "run_${TSTTYPE}_1_sorts_diff.log"
+        cat "run_${TSTTYPE}_1_sorts_diff.log"
+        P1="3"
+        P2="2"
+        P3="${TSTTYPE}: Results are correct for 1 sorter(s) and a large (4 MB) file"
+        P4="${TSTTYPE}: Results are NOT correct for 1 sorter(s) and a large (4 MB) file"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="i2"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}: no words <=4 or >10"
+        INT="none"
+        file="${HOME}/${COURSE}/${HWDIR}/files/large"
+    file="${BASE}/files/large"
+        ./${BINFILE} -n 2 -s 4 -l 10 < ${file} 1>"run_${TSTTYPE}_2_sorts.log" &
+        TP=$!
+        echo "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+
+        # Cleans output by removing any non-alphanumeric (,; etc.), and formatting with "%10d %s".
+        # Also removes empty lines. Later removes the numbers.
+        #cat "run_${TSTTYPE}_1_sorts.log" | awk '{a=$0; gsub(/[^0-9a-z]/, " ", a); split(a, b, " "); if (length(b)==2) {printf("%10d%s\n", b[1], b[2])}}' | awk '{print $2}' > "run_${TSTTYPE}_1_sorts_fmt.log"
+        echo "    Showing diff of ground truth result to student's result for 2 sorts and a large file: should be empty!"
+        #diff "run_${TSTTYPE}_2_sorts.log" "${HOME}/${COURSE}/${HWDIR}/files/large_out" > "run_${TSTTYPE}_2_sorts_diff.log"
+        diff "run_${TSTTYPE}_2_sorts.log" "${BASE}/files/large_out" > "run_${TSTTYPE}_2_sorts_diff.log"
+        cat "run_${TSTTYPE}_2_sorts_diff.log"
+        P1="3"
+        P2="2"
+        P3="${TSTTYPE}: Results are correct for 2 sorter(s) and a large (4 MB) file"
+        P4="${TSTTYPE}: Results are NOT correct for 2 sorter(s) and a large (4 MB) file"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    # ##########################################################################################
+    TSTTYPE="i3"
+    if [[ -z ${DBG} ]] || [[ "${DBG}" == "${TSTTYPE}" ]]; then
+        echo ""
+        echo "    ########## Testing '${TSTTYPE}' for ${NID}: no words <=4 or >10"
+        INT="none"
+        file="${HOME}/${COURSE}/${HWDIR}/files/large"
+    file="${BASE}/files/large"
+        ./${BINFILE} -n 5 -s 4 -l 10 < ${file} 1>"run_${TSTTYPE}_5_sorts.log" &
+        TP=$!
+        echo "    waiting ${BINFILE} on PID ${TP} ... (CTRL-C to interrupt ${BINFILE})"
+        trap 'interrupt ${TP}' SIGINT
+        wait ${TP}
+        trap - SIGINT
+
+        # Cleans output by removing any non-alphanumeric (,; etc.), and formatting with "%10d %s".
+        # Also removes empty lines. Later removes the numbers.
+        #cat "run_${TSTTYPE}_1_sorts.log" | awk '{a=$0; gsub(/[^0-9a-z]/, " ", a); split(a, b, " "); if (length(b)==2) {printf("%10d%s\n", b[1], b[2])}}' | awk '{print $2}' > "run_${TSTTYPE}_1_sorts_fmt.log"
+        echo "    Showing diff of ground truth result to student's result for 5 sorts and a large file: should be empty!"
+        #diff "run_${TSTTYPE}_5_sorts.log" "${HOME}/${COURSE}/${HWDIR}/files/large_out" > "run_${TSTTYPE}_5_sorts_diff.log"
+        diff "run_${TSTTYPE}_5_sorts.log" "${BASE}/files/large_out" > "run_${TSTTYPE}_5_sorts_diff.log"
+        cat "run_${TSTTYPE}_5_sorts_diff.log"
+        P1="3"
+        P2="2"
+        P3="${TSTTYPE}: Results are correct for 5 sorter(s) and a large (4 MB) file"
+        P4="${TSTTYPE}: Results are NOT correct for 5 sorter(s) and a large (4 MB) file"
+        P5="${GRDFILE}"
+        get_eval "${P1}" "${P2}" "${P3}" "${P4}" "${P5}"
+    fi
+
+    #continue
+
+    
+    # Writing final grade
+    finalGrade ${GRADE} ${GRDFILE}
+
+    # Killing any remaining pipesort instances.
+    #killall --user ${USER} ${BINFILE}
+
+	cd - > /dev/null
+
+# Redirecting the stdin to fd 3 to be used by reads inside the while loop
+} 3<&0

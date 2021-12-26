@@ -1,0 +1,43 @@
+Results grads3
+Total:        100.00 of 100.00
+------------------------------------------------------
+Good Faith:   10.00 of 10.00
+Functions:    82.00 of 82.00
+Robustness    8.00 of 8.00
+------------------------------------------------------
+Functions
+Basic:        16.40 of 16.40
+Intermediate: 45.10 of 45.10
+Advanced:     16.40 of 16.40
+Exact:        4.10 of 4.10
+Good Faith
+ls ../$dir/ppmcvt >/dev/null: passed
+nm ../$dir/*.o | grep 'U getopt'>/dev/null: passed
+nm ../$dir/*.o | egrep 'U\ malloc|U\ calloc'>/dev/null: passed
+Functions
+Bitmap
+./ppmcvt -b -o out01.pbm duck.ppm: exact
+Grayscale
+./ppmcvt  -g 15 -o out02.pgm duck.ppm: exact
+./ppmcvt  -g 255 -o out03.pgm duck.ppm: exact
+Isolate
+./ppmcvt  -i red -o out04.ppm duck.ppm: exact
+Remove
+./ppmcvt  -r green -o out05.ppm duck.ppm: exact
+Sepia
+./ppmcvt  -s -o out06.ppm duck.ppm: exact
+./ppmcvt  -s -o out07.ppm dark.ppm: exact
+Mirror
+./ppmcvt  -m -o out08.ppm duck.ppm: exact
+./ppmcvt  -m -o out09.ppm odd.ppm: exact
+Tile
+./ppmcvt  -t 6 -o out10.ppm even.ppm: exact
+./ppmcvt  -t 6 -o out11.ppm prime.ppm: exact
+N-up
+./ppmcvt  -n 7 -o out12.ppm even.ppm: exact
+./ppmcvt  -n 7 -o out13.ppm prime.ppm: exact
+valgrind ./ppmcvt -n 2  -o out00.ppm duck.ppm 2>&1 | grep "in use at exit:" | sed -e 's/.*: //' > out18.txt: passed
+valgrind ./ppmcvt -g  -o out00.pgm duck.ppm 2>&1 | grep "in use at exit:" | sed -e 's/.*: //' > out19.txt: passed
+./ppmcvt  -o out20.pbm duck.ppm: passed
+./ppmcvt  -n 1 -o out21.ppm duck.ppm: passed
+./ppmcvt  -t 1 -o out22.ppm duck.ppm: passed
