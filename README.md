@@ -1,2 +1,2 @@
-# Emory-CS551
+# Codes of Pipe, Myar, Mymalloc, PIC, Socket
 SYSTEM PROGRAMMING
