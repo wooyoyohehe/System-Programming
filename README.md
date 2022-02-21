@@ -1,2 +1,2 @@
-# Codes of Pipe, Myar, Mymalloc, PIC, Socket
+# Codes of Pipe, Myar, Mymalloc, PIC, Socket in C
 SYSTEM PROGRAMMING
